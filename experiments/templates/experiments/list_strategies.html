@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}Chunking strategies{% endblock %}
+
+{% block content %}
+    <h2>Chunking strategies defined</h2>
+    <p><a href="{% url 'experiments:create_strategy' %}">Create New Strategy</a></p>
+    {% if strategies %}
+        <table border="1" cellpadding="5" cellspacing="0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Parameters</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for strategy in strategies %}
+                    <tr>
+                        <td>{{ strategy.name }}</td>
+                        <td>{{ strategy.get_method_type_display }}</td>
+                        <td><pre style="margin:0; white-space: pre-wrap; word-break: break-all;">{{ strategy.parameters | default:"{}" }}</pre></td>
+                        <td>
+                            <a href="{% url 'experiments:edit_strategy' strategy.pk %}">Update</a>
+                            <form action="{% url 'experiments:delete_strategy' strategy.pk %}" method="post" style="display: inline; margin-left: 5px;" onsubmit="return confirm('Are you sure you want to delete this strategy?');">
+                                {% csrf_token %}
+                                <button type="submit" style="background:none; border:none; color:red; text-decoration:underline; cursor:pointer; padding:0;">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="4">No existing chunking strategy.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No existing chunking strategy.</p>
+    {% endif %}
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if is_edit %}Update{% else %}Create{% endif %} Strategy{% endblock %}
+
+{% block content %}
+    <h2>{% if is_edit %}Update Strategy: {{ strategy.name }}{% else %}Create New Strategy{% endif %}</h2>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">{% if is_edit %}Save Updates{% else %}Create Strategy{% endif %}</button>
+        <a href="{% url 'experiments:list_strategies' %}" style="margin-left: 15px;">Reset</a>
+    </form>
+
+{% endblock %}

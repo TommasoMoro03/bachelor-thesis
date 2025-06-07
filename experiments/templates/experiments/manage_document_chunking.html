@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% load dict_filters %}
+
+{% block title %}Chunk management for {{ source_text.title }}{% endblock %}
+
+{% block content %}
+    <h2>Chunk management for: {{ source_text.title }}</h2>
+    <p><a href="{% url 'corpus:source_text_detail' source_text.pk %}">Go back to document details</a></p>
+
+    <hr>
+    <h3>Chunking strategies and status</h3>
+
+    {% if available_strategies %}
+        <table border="1" cellpadding="5" cellspacing="0" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>Strategy</th>
+                    <th>Type</th>
+                    <th>Parameters</th>
+                    <th style="width: 25%;">State / Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for strategy in available_strategies %}
+                    <tr>
+                        <td>{{ strategy.name }}</td>
+                        <td>{{ strategy.get_method_type_display }}</td>
+                        <td><pre style="margin:0; white-space: pre-wrap; word-break: break-all;">{{ strategy.parameters|default:"{}" }}</pre></td>
+                        <td>
+                            {% if strategy.pk in applied_chunk_sets_map %}
+                                {% with chunk_set_pk=applied_chunk_sets_map|get_item:strategy.pk %}
+                                     <span style="color: green;">Applied (ID: {{ chunk_set_pk }})</span><br>
+                                     <a href="{% url 'experiments:view_chunk_set' chunk_set_pk %}">View Chunks</a>
+                                     <form action="{% url 'experiments:delete_chunk_set' chunk_set_pk=chunk_set_pk %}" method="post" style="display: inline-block; margin-left: 10px;" onsubmit="return confirm('Are you sure you want to delete this chunk set? This action is not reversible and will also delete evaluation data.');">
+                                         {% csrf_token %}
+                                         <button type="submit" style="background:none; border:none; color:red; text-decoration:underline; cursor:pointer; padding:0;">Delete</button>
+                                     </form>
+                                {% endwith %}
+                            {% else %}
+                                <form action="{% url 'experiments:apply_strategy_to_document' source_text_pk=source_text.pk strategy_pk=strategy.pk %}" method="post" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Applying...';">
+                                    {% csrf_token %}
+                                    <button type="submit">Apply</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="4">No available strategy. <a href="{% url 'experiments:create_strategy' %}">Create the first.</a></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p style="margin-top:1em;"><a href="{% url 'experiments:list_strategies' %}">Manage chunking strategies (Create/Update/Delete)</a></p>
+    {% else %}
+        <p>No chunking strategy defined. <a href="{% url 'experiments:create_strategy' %}">Create one</a> before applying it.</p>
+    {% endif %}
+
+{% endblock %}

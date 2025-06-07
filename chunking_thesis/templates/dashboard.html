@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Chunking Experiments{% endblock %}
+
+{% block content %}
+<h2>Main Dashboard</h2>
+<p>Welcome to the experiment suite for the chunking thesis.</p>
+
+<h3>Quick Actions</h3>
+<ul>
+    <li><strong>Corpus:</strong>
+        <ul>
+            <li><a href="{% url 'corpus:list_source_texts' %}">View/Manage Source Texts</a></li>
+            <li><a href="{% url 'corpus:upload_source_text' %}">Upload New Source Text</a></li>
+        </ul>
+    </li>
+    <li><strong>Experiments & Annotations:</strong>
+        <ul>
+            <li><a href="{% url 'experiments:list_experiments' %}">View Experiments / Annotate Sentences</a></li>
+            {# The link to create experiments has been removed #}
+        </ul>
+    </li>
+    {# --- Added Section --- #}
+    <li><strong>Chunking Strategies:</strong>
+        <ul>
+            <li><a href="{% url 'experiments:list_strategies' %}">View/Manage Strategies</a></li>
+            <li><a href="{% url 'experiments:create_strategy' %}">Create New Strategy</a></li>
+        </ul>
+    </li>
+    <li><strong>Evaluation:</strong>
+        <ul>
+            <li><a href="#">View Evaluation Results</a></li>
+        </ul>
+    </li>
+</ul>
+
+{# You could add other summary information or charts here in the future #}
+
+{% endblock %}

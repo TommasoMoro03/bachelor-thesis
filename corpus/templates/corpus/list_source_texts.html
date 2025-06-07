@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}Source Texts{% endblock %}
+
+{% block content %}
+    <h2>Uploaded Source Texts</h2>
+    <p><a href="{% url 'corpus:upload_source_text' %}">Upload New Source Text</a></p>
+    {% if source_texts %}
+        <ul>
+            {% for text in source_texts %}
+                <li>
+                    <a href="{% url 'corpus:source_text_detail' text.pk %}">{{ text.title }}</a>
+                    (Uploaded: {{ text.uploaded_at|date:"d/m/Y H:i" }})
+                    - <a href="{{ text.file.url }}" target="_blank" download>Download File</a>
+                </li>
+            {% empty %}
+                <li>No source texts uploaded.</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No source texts uploaded.</p>
+    {% endif %}
+{% endblock %}

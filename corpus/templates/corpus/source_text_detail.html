@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %}Details: {{ source_text.title }}{% endblock %}
+
+{% block content %}
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h2>{{ source_text.title }}</h2>
+            <p><strong>Uploaded:</strong> {{ source_text.uploaded_at|date:"d/m/Y H:i" }}</p>
+            <p><strong>File:</strong> <a href="{{ source_text.file.url }}" target="_blank" download>Download {{ source_text.filename }}</a></p>
+            <p><strong>Saved Path (info):</strong> {{ source_text.file }}</p>
+            {% if source_text.metadata %}
+                <p><strong>Text Metadata:</strong></p>
+                <pre><code>{{ source_text.metadata }}</code></pre>
+            {% endif %}
+        </div>
+        {# --- Added Button/Link --- #}
+        <div style="margin-left: 20px;">
+             <a href="{% url 'experiments:manage_document_chunking' source_text.pk %}" style="display: inline-block; padding: 10px 15px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Manage Chunking for This Text</a>
+        </div>
+    </div>
+
+    <h3>Content:</h3>
+       <pre style="white-space: pre-wrap; word-wrap: break-word; border: 1px solid #ccc; padding: 10px; max-height: 300px; overflow-y: auto;">{{ source_text_content|truncatechars:2000 }}</pre>
+
+    <hr>
+
+    <h3>Questions Related to This Text (and Associated Experiments)</h3>
+    {% if questions %}
+        <ul>
+            {% for question in questions %}
+                <li>
+                    {{ question.text }}
+                    {% if question.metadata %}<pre style="font-size: 0.8em; margin-left: 15px;">Q Metadata: {{ question.metadata }}</pre>{% endif %}
+                    (Added: {{ question.created_at|date:"d/m/Y H:i" }})
+                    {# Link to associated experiment (if exists) and its annotation #}
+                    {% with question.experiment_set.first as experiment %} {# Assumes max 1 experiment per question here #}
+                        {% if experiment %}
+                            <span style="margin-left: 10px;">[<a href="{% url 'experiments:annotate_experiment' experiment.pk %}">Annotate Sentences (Exp {{ experiment.id }})</a>]</span>
+                        {% else %}
+                            <span style="margin-left: 10px; color: #888;">[No associated experiment]</span> {# Should not happen with automatic creation #}
+                        {% endif %}
+                    {% endwith %}
+                </li>
+            {% empty %}
+                <li>No questions added for this text.</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No questions added for this text.</p>
+    {% endif %}
+
+    <hr>
+
+    <h3>Add New Question</h3>
+    <p>Adding a new question will automatically create an associated experiment (if not already present).</p>
+    <form method="post">
+        {% csrf_token %}
+        {{ question_form.as_p }} {# Renders Django form #}
+        <button type="submit">Add Question</button>
+    </form>
+
+    <p style="margin-top: 20px;"><a href="{% url 'corpus:list_source_texts' %}">Back to Text List</a></p>
+{% endblock %}

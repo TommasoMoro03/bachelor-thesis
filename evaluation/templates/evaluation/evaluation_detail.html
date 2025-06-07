@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+
+{% block title %}Analysis: Exp {{ experiment.id }} / ChunkSet {{ chunk_set.id }}{% endblock %}
+
+{% block content %}
+<style>
+    .highlight {
+        background-color: yellow;
+    }
+    /* Style for the chunk text preview area */
+    .chunk-text-container {
+        white-space: pre-wrap; /* Preserves spaces and line breaks */
+        word-wrap: break-word; /* Wraps long words */
+        max-height: 100px; /* Limits height, adds scrollbar if content overflows */
+        overflow-y: auto;
+        margin: 0;
+        padding: 5px; /* Add some padding */
+        border: 1px solid #eee; /* Light border for distinction */
+        background-color: #f9f9f9; /* Light background */
+    }
+</style>
+
+    <h2>Analysis Evaluation Detail</h2>
+
+    <div style="margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; background-color: #f9f9f9;">
+        <p><strong>Analysis ID:</strong> {{ analysis.id }} {% if analysis_just_created %}(Just created){% endif %}</p>
+        <p><strong>Number of relevant chunks (\(k_{relevant})\):</strong>
+           {% if analysis.k_relevant is not None %}
+               <strong>{{ analysis.k_relevant }}</strong>
+           {% else %}
+               <span style="color: orange;">(Not calculated yet)</span>
+           {% endif %}
+        </p>
+        <p><strong>Question:</strong> {{ experiment.question.text }}</p>
+    </div>
+
+    {# --- Sezione Ranking --- #}
+    <section id="ranking-section" style="margin-bottom: 20px;">
+        <h3>Step 1: Identification and Ranking of relevant chunks (\(C_{relevant})\)</h3>
+
+        {% if analysis.k_relevant is None %}
+             <p style="color: orange;">The initial analysis has not been completed successfully. Try again and reload the page</p>
+        {% elif analysis.k_relevant == 0 %}
+            <p>No relevant chunk found for this experiment and this strategy.</p>
+            <p><em>No ranking is necessary. You can directly proceed with the simulation.</em></p>
+        {% else %}
+            <p>Assign a unique rank from 1 to {{ analysis.k_relevant }} to every chunk found, based on its importance to answer the question. Rank 1 is the most important.</p>
+            <form method="post">
+                {% csrf_token %}
+                <table border="1" cellpadding="5" cellspacing="0" style="width: 100%; margin-bottom: 10px;">
+                    <thead>
+                        <tr>
+                            <th style="width: 10%;">Manual Rank</th>
+                            <th style="width: 10%;">Chunk Index</th>
+                            <th style="width: 15%;">Position (Chars)</th>
+                            <th>Chunk text (preview)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rrc in ranked_relevant_chunks %}
+                        <tr>
+                            <td style="text-align: center;">
+                                <input type="number"
+                                       name="rank_{{ rrc.chunk.pk }}"
+                                       value="{{ rrc.ideal_rank|default:'' }}"
+                                       min="1"
+                                       max="{{ analysis.k_relevant }}"
+                                       required
+                                       style="width: 50px; text-align: center;">
+                            </td>
+                            <td style="text-align: center;">{{ rrc.chunk.chunk_index }}</td>
+                            <td style="text-align: center;">{{ rrc.chunk.start_char }} - {{ rrc.chunk.end_char }}</td>
+                            <td><pre class="chunk-text-container" id="chunk-{{ rrc.chunk.pk }}">{{ rrc.chunk.text }}</pre></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" style="text-align: center; color: orange;">Error: k_relevant is {{ analysis.k_relevant }} but no RankedRelevantChunk objects found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <button type="submit" name="action" value="save_ranking_and_calculate_properties">
+                    {% if ranking_complete %}Update Rank e calculate properties again{% else %}Save rank and calculate properties{% endif %}
+                </button>
+                {% if ranking_complete %}<span style="color: green; margin-left: 10px;">(Ranking completed)</span>{% endif %}
+            </form>
+        {% endif %}
+    </section>
+    <hr>
+
+    {# --- Sezione Proprietà Calcolate --- #}
+     <section id="properties-section" style="margin-bottom: 20px;">
+        <h3>Step 2: Calculated properties (\(w\), \(Density\), \(w'\))</h3>
+        {% if not ranking_complete %}
+             <p><em>Complete and save ranking (Step 1) to enable properties calculation.</em></p>
+        {% elif not properties_calculated %}
+             <p style="color: orange;"><em>Properties not calculated yet. Save or update ranking to calculate them again.</em></p>
+        {% else %}
+            <p>Calculated properties based on the manual ranking:</p>
+             <table border="1" cellpadding="5" cellspacing="0" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Ideal Rank</th>
+                        <th>Chunk Index</th>
+                        <th>Importance (w)</th>
+                        <th>Density</th>
+                        <th>Effective Relevance (w')</th>
+                        <th>Chunk text (preview)</th>
+                    </tr>
+                </thead>
+                 <tbody>
+                     {% for rrc in ranked_relevant_chunks %}
+                     <tr>
+                         <td style="text-align: center;">{{ rrc.ideal_rank }}</td>
+                         <td style="text-align: center;">{{ rrc.chunk.chunk_index }}</td>
+                         <td style="text-align: center;">{{ rrc.intrinsic_importance_w|floatformat:3|default:"N/A" }}</td>
+                         <td style="text-align: center;">{{ rrc.relevance_density|floatformat:3|default:"N/A" }}</td>
+                         <td style="text-align: center;"><strong>{{ rrc.effective_relevance_w_prime|floatformat:3|default:"N/A" }}</strong></td>
+                         <td><pre style="white-space: pre-wrap; word-wrap: break-word; max-height: 60px; overflow-y: auto; margin: 0;">{{ rrc.chunk.text|truncatechars:200 }}</pre></td>
+                     </tr>
+                     {% endfor %}
+                 </tbody>
+             </table>
+        {% endif %}
+     </section>
+    <hr>
+
+    {# --- Sezione Simulazione e Risultato RDSG (Modificata) --- #}
+    <section id="simulation-section" style="margin-bottom: 20px;">
+        <h3>Step 3: Retrieval Simulation and result (RDSG)</h3>
+        {% if not properties_calculated %}
+            <p><em>Complete ranking and properties calculation (Step 1 & 2) to enable Retrieval.</em></p>
+        {% else %}
+            {% if not simulation %}
+            <form method="post" style="margin-bottom: 15px;">
+                 {% csrf_token %}
+                 <button type="submit" name="action" value="run_simulation_and_calculate_rdsg">Start Retrieval and calculate RDSG</button>
+            </form>
+            {% endif %}
+
+            {% if simulation %}
+                 <p><strong>Risultati Simulazione:</strong></p>
+                 <ul>
+                     <li>Retriever: {{ simulation.retriever_name|default:"N/A" }}</li>
+                     <li>Embedding Model: {{ simulation.embedding_model_name|default:"N/A" }}</li>
+                     <li>Retrieved Chunks (\(k_{retrieved})\): {{ simulation.k_retrieved|default:"N/A" }}</li>
+                     <li><strong>RDSG score:</strong>
+                        {% if simulation.rdsg_score is not None %}
+                            <strong>{{ simulation.rdsg_score|floatformat:4 }}</strong>
+                        {% else %}
+                            <span style="color: orange;">(Not calculated yet)</span>
+                        {% endif %}
+                     </li>
+                     <li>Retrieval executed on: {{ simulation.ran_at|date:"d/m/Y H:i:s" }}</li>
+                 </ul>
+                 <h4>Retrieved chunks (\(List_{retrieved})\):</h4>
+                 <table border="1" cellpadding="5" cellspacing="0" style="width: 100%;">
+                     <thead>
+                         <tr>
+                             <th>Retrieved Rank (i)</th>
+                             <th>Similarity Score (s_i)</th>
+                             <th>Chunk Index</th>
+                             <th>Chunk text (preview)</th>
+                             <th>Is it relevant? (Ideal Rank / w')</th>
+                         </tr>
+                     </thead>
+                     <tbody>
+                        {% for item in retrieved_chunks_list %}
+                            <tr>
+                                <td style="text-align: center;">{{ item.retrieved_rank }}</td>
+                                <td style="text-align: center;">{{ item.similarity_score_s|floatformat:4 }}</td>
+                                <td style="text-align: center;">{{ item.chunk.chunk_index }}</td>
+                                <td><pre style="white-space: pre-wrap; word-wrap: break-word; max-height: 60px; overflow-y: auto; margin: 0;">{{ item.chunk.text|truncatechars:200 }}</pre></td>
+                                <td>
+                                    {% if item.relevance_info %}
+                                        <span style="color: green;">Yes</span>
+                                        (Ideal Rank: {{ item.relevance_info.ideal_rank|default:"N/A" }},
+                                         w': {% if item.relevance_info.effective_relevance_w_prime is not None %}{{ item.relevance_info.effective_relevance_w_prime|floatformat:3 }}{% else %}N/A{% endif %})
+                                    {% else %}
+                                        <span style="color: gray;">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                         <tr><td colspan="5">No retrieved chunk in this simulation (or error).</td></tr>
+                        {% endfor %}
+                     </tbody>
+                 </table>
+                 <form method="post" style="margin-top: 10px;">
+                     {% csrf_token %}
+                     <button type="submit" name="action" value="run_simulation_and_calculate_rdsg">Execute again</button>
+                 </form>
+
+            {% else %}
+                 <p><em>No retrieval executed for this analysis</em></p>
+            {% endif %}
+
+        {% endif %}
+    </section>
+    <hr>
+
+    <p>
+        <a href="{% url 'experiments:manage_document_chunking' experiment.source_text.pk %}">Go back to chunk managing</a> |
+        <a href="{% url 'experiments:list_experiments' %}">Go back to experiments list</a>
+    </p>
+
+{# --- NEW JAVASCRIPT FOR HIGHLIGHTING CHUNK TEXTS --- #}
+<script>
+    console.log("Script loaded and starting!");
+    const allRelevantHighlights = JSON.parse('{{ all_relevant_highlights_json|escapejs }}');
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Iterate through each chunk text container
+        document.querySelectorAll('.chunk-text-container').forEach(chunkTextContainer => {
+            const chunkId = chunkTextContainer.id.replace('chunk-', '');
+            const charPosText = chunkTextContainer.parentNode.previousElementSibling.textContent;
+            const charPosParts = charPosText.split('-').map(s => parseInt(s.trim()));
+            const chunkStartChar = charPosParts[0];
+            const chunkEndChar = charPosParts[1];
+
+            const chunkText = chunkTextContainer.textContent; // This is what's in the <pre>
+
+            console.log(`--- Processing Chunk PK: ${chunkId} ---`);
+            console.log(`Chunk Document Range: [${chunkStartChar}, ${chunkEndChar}]`);
+            console.log(`Chunk Text Content Length: ${chunkText.length}`);
+            console.log(`Chunk Text (first 50): "${chunkText.substring(0,50).replace(/\n/g, '\\n')}"`);
+
+
+            let highlightedHtml = '';
+            let lastIndex = 0; // This index is relative to chunkText
+
+            allRelevantHighlights.forEach(highlight => {
+                console.log(`  Processing Highlight Document Range: [${highlight.start}, ${highlight.end}]`);
+
+                // Calculate the overlap of the relevant highlight with the current chunk's bounds (document-absolute)
+                const overlapStartDocument = Math.max(highlight.start, chunkStartChar);
+                const overlapEndDocument = Math.min(highlight.end, chunkEndChar);
+
+                if (overlapStartDocument < overlapEndDocument) { // There is an overlap
+                    console.log(`  Overlap Document Range: [${overlapStartDocument}, ${overlapEndDocument}]`);
+
+                    // Convert overlap coordinates from document-absolute to chunk-relative
+                    const chunkRelativeOverlapStart = overlapStartDocument - chunkStartChar;
+                    const chunkRelativeOverlapEnd = overlapEndDocument - chunkStartChar;
+
+                    console.log(`  Overlap Chunk Relative Range: [${chunkRelativeOverlapStart}, ${chunkRelativeOverlapEnd}]`);
+                    console.log(`  Text before highlight (chunk-relative): "${chunkText.substring(lastIndex, chunkRelativeOverlapStart).replace(/\n/g, '\\n')}"`);
+                    console.log(`  Text to highlight (chunk-relative): "${chunkText.substring(chunkRelativeOverlapStart, chunkRelativeOverlapEnd).replace(/\n/g, '\\n')}"`);
+
+                    // Append text before the highlight
+                    highlightedHtml += chunkText.substring(lastIndex, chunkRelativeOverlapStart);
+                    // Append the highlighted text
+                    highlightedHtml += `<span class="highlight">${chunkText.substring(chunkRelativeOverlapStart, chunkRelativeOverlapEnd)}</span>`;
+                    lastIndex = chunkRelativeOverlapEnd;
+                }
+            });
+
+            // Append any remaining text after the last highlight in this chunk
+            highlightedHtml += chunkText.substring(lastIndex);
+
+            // Update the chunk's content with the highlighted HTML
+            chunkTextContainer.innerHTML = highlightedHtml;
+            console.log(`--- Finished Chunk PK: ${chunkId} ---\n`);
+        });
+    });
+</script>
+
+{% endblock %}

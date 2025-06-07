@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Chunk Set {{ chunk_set.id }} - {{ chunk_set.strategy.name }}{% endblock %}
+
+{% block content %}
+<style>
+    .highlight { background-color: #FFEC8B; } /* Giallo più tenue */
+    .chunk-text {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        margin-top: 5px;
+        border-top: 1px dashed #ccc;
+        padding-top: 5px;
+        font-family: monospace;
+        line-height: 1.5;
+    }
+    .chunk-container {
+        border: 1px solid #eee;
+        padding: 10px;
+        background-color: #f9f9f9;
+        margin-bottom: 15px; /* Aggiunto spazio tra chunk */
+    }
+</style>
+
+    <h2>Chunk Set Visualization {{ chunk_set.id }}</h2>
+    <p><strong>Document:</strong> <a href="{% url 'corpus:source_text_detail' chunk_set.source_text.pk %}">{{ chunk_set.source_text.title }}</a></p>
+    <p><strong>Applied strategy:</strong> {{ chunk_set.strategy.name }} (Type: {{ chunk_set.strategy.get_method_type_display }})</p>
+    {% if experiment %}
+         <p><strong>Question text (Experiment {{ experiment.id }}):</strong> {{ experiment.question.text }}</p>
+    {% else %}
+         <p><em>(A precise question has not been specified, so relevant chunks are not visualized)</em></p>
+    {% endif %}
+    <p><strong>Created on:</strong> {{ chunk_set.created_at|date:"d/m/Y H:i" }}</p>
+    <p><strong>Total number of chunks:</strong> {{ page_obj.paginator.count }}</p>
+    <p><a href="{% url 'experiments:manage_document_chunking' chunk_set.source_text.pk %}">Go back to chunk managing</a></p>
+
+    <hr>
+    <h3>Chunk (Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}):</h3>
+
+    {% if page_obj.object_list %}
+        <div id="chunks-display-area">
+            {% for chunk in page_obj %}
+                <div class="chunk-container"
+                     data-chunk-id="{{ chunk.id }}"
+                     data-chunk-start="{{ chunk.start_char }}"
+                     data-chunk-end="{{ chunk.end_char }}">
+
+                    <strong>Chunk Index: {{ chunk.chunk_index }}</strong>
+                    (Chars Doc: {{ chunk.start_char }} - {{ chunk.end_char }})
+                    <div class="chunk-text" id="chunk-text-{{ chunk.id }}">{{ chunk.text }}</div>
+
+                    {% if chunk.metadata %}
+                        <details style="margin-top: 5px;">
+                            <summary style="cursor: pointer; font-size: 0.9em;">Chunk metadata</summary>
+                            <pre style="font-size: 0.8em; background-color: #eef;">{{ chunk.metadata }}</pre>
+                        </details>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="pagination" style="margin-top: 20px;">
+            <span class="step-links">
+                {% if page_obj.has_previous %}
+                    <a href="?page=1{% if experiment %}&experiment_id={{ experiment.id }}{% endif %}">&laquo; first</a>
+                    <a href="?page={{ page_obj.previous_page_number }}{% if experiment %}&experiment_id={{ experiment.id }}{% endif %}">previous</a>
+                {% endif %}
+                <span class="current">
+                    Pagina {{ page_obj.number }} di {{ page_obj.paginator.num_pages }}.
+                </span>
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if experiment %}&experiment_id={{ experiment.id }}{% endif %}">next</a>
+                    <a href="?page={{ page_obj.paginator.num_pages }}{% if experiment %}&experiment_id={{ experiment.id }}{% endif %}">last &raquo;</a>
+                {% endif %}
+            </span>
+        </div>
+
+    {% else %}
+        <p>No chunk found for this set.</p>
+    {% endif %}
+
+<script>
+    // Dati passati dalla view Django
+    const existingHighlights = JSON.parse('{{ existing_highlights_json|escapejs }}');
+
+    /**
+     * Funzione helper (semplificata) per trovare nodo/offset basato su char offset
+     * all'interno di UN elemento specifico (qui, il div di un chunk).
+     */
+    function findNodeAndOffsetInChunk(chunkTextElement, charOffsetInChunk) {
+        const treeWalker = document.createTreeWalker(chunkTextElement, NodeFilter.SHOW_TEXT, null, false);
+        let currentOffset = 0;
+        let currentNode;
+        while (currentNode = treeWalker.nextNode()) {
+            const nodeLength = currentNode.textContent.length;
+            // Offset cade all'interno di questo nodo
+            if (charOffsetInChunk >= currentOffset && charOffsetInChunk <= currentOffset + nodeLength) {
+                return {
+                    node: currentNode,
+                    offset: charOffsetInChunk - currentOffset
+                };
+            }
+            currentOffset += nodeLength;
+        }
+        // Caso speciale: fine dell'ultimo nodo
+         const lastNode = treeWalker.previousNode();
+         if (lastNode && charOffsetInChunk === currentOffset) {
+              return { node: lastNode, offset: lastNode.textContent.length };
+         }
+        return null; // Offset non trovato
+    }
+
+    /**
+     * Tenta di applicare l'highlight a un range.
+     */
+    function highlightRangeInChunk(range) {
+        if (range.collapsed) return false;
+        const span = document.createElement('span');
+        span.className = 'highlight';
+        try {
+            range.surroundContents(span);
+            return true;
+        } catch (e) {
+            console.warn("Errore surroundContents nel chunk:", e, range);
+            return false;
+        }
+    }
+
+    /**
+     * Applica gli highlights esistenti ai chunk VISIBILI nella pagina corrente.
+     */
+    function applyExistingHighlightsToVisibleChunks() {
+        console.log("Applying highlight to chunks...", existingHighlights);
+        if (!existingHighlights || existingHighlights.length === 0) {
+             console.log("No highlight to apply.");
+             return; // Non fare nulla se non ci sono highlights
+        }
+
+
+        document.querySelectorAll('.chunk-container').forEach(chunkDiv => {
+            const chunkId = chunkDiv.dataset.chunkId;
+            const chunkStart = parseInt(chunkDiv.dataset.chunkStart, 10);
+            const chunkEnd = parseInt(chunkDiv.dataset.chunkEnd, 10);
+            const chunkTextElement = chunkDiv.querySelector('.chunk-text'); // Trova l'elemento con il testo
+
+            if (!chunkTextElement || isNaN(chunkStart) || isNaN(chunkEnd)) {
+                console.warn(`Skipping chunk ${chunkId}: Missing data or no text found.`);
+                return; // Salta se mancano dati essenziali
+            }
+
+             // Filtra gli highlights che INTERSECANO questo chunk
+            const relevantHighlightsForChunk = existingHighlights.filter(hl =>
+                hl.start < chunkEnd && hl.end > chunkStart
+            );
+
+            if (relevantHighlightsForChunk.length === 0) return; // Nessun highlight per questo chunk
+
+             // Ordina per start decrescente per applicare dal fondo
+             relevantHighlightsForChunk.sort((a, b) => b.start - a.start);
+
+             relevantHighlightsForChunk.forEach(hl => {
+                // Calcola coordinate RELATIVE all'interno del chunk
+                const relativeStart = Math.max(0, hl.start - chunkStart);
+                const relativeEnd = Math.min(chunkEnd - chunkStart, hl.end - chunkStart);
+
+                 // Trova i nodi e offset RELATIVI all'interno di chunkTextElement
+                const startPos = findNodeAndOffsetInChunk(chunkTextElement, relativeStart);
+                const endPos = findNodeAndOffsetInChunk(chunkTextElement, relativeEnd);
+
+                if (startPos && endPos && startPos.offset < endPos.offset ) { // Aggiunto controllo start < end relativo
+                    try {
+                        const range = document.createRange();
+                        range.setStart(startPos.node, startPos.offset);
+                        range.setEnd(endPos.node, endPos.offset);
+
+                        // Applica l'highlight
+                        highlightRangeInChunk(range);
+
+                    } catch (e) {
+                        console.error(`Errore applicazione highlight relativo [${relativeStart}-${relativeEnd}] nel chunk ${chunkId}:`, e);
+                    }
+                } else if (startPos && endPos && startPos.node === endPos.node && startPos.offset === endPos.offset) {
+                     // Ignora range collassati risultanti dal clipping
+                     // console.log(`Highlight [${hl.start}-${hl.end}] risulta collassato nel chunk ${chunkId}. Skipping.`);
+                }
+                else {
+                    console.warn(`Impossibile trovare nodi/offset relativi per highlight [${hl.start}-${hl.end}] nel chunk ${chunkId}. StartPos:`, startPos, "EndPos:", endPos);
+                }
+             });
+             // Normalizza alla fine per ogni chunk
+             chunkTextElement.normalize();
+        });
+         console.log("Applicazione highlights completata.");
+    }
+
+    // --- Esegui all'avvio ---
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyExistingHighlightsToVisibleChunks);
+    } else {
+        applyExistingHighlightsToVisibleChunks();
+    }
+
+</script>
+{# --- Fine Script Highlighting --- #}
+
+{% endblock %}

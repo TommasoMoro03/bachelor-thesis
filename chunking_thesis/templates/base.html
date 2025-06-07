@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Chunking Thesis Experiment Suite{% endblock %}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; min-height: 100vh; flex-direction: column; }
+        header { background-color: #f0f0f0; padding: 10px 20px; border-bottom: 1px solid #ccc; }
+        nav ul { list-style: none; padding: 0; margin: 0; }
+        nav ul li { display: inline; margin-right: 15px; }
+        main { flex: 1; padding: 20px; }
+        footer { background-color: #f0f0f0; padding: 10px 20px; border-top: 1px solid #ccc; text-align: center; font-size: 0.9em; margin-top: auto; }
+        .messages { list-style: none; padding: 0; margin: 10px 0;}
+        .messages .success { color: green; border: 1px solid green; padding: 10px; }
+        .messages .error { color: red; border: 1px solid red; padding: 10px; }
+        /* Stili base */
+    </style>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="{% url 'dashboard' %}">Dashboard</a></li>
+                <li><a href="{% url 'corpus:list_source_texts' %}">Corpus</a></li>
+                <li><a href="{% url 'experiments:list_experiments' %}">Experiments</a></li>
+                {# --- Link Aggiunto --- #}
+                <li><a href="{% url 'experiments:list_strategies' %}">Chunking Strategies</a></li>
+                {# <li><a href="{% url 'evaluation:list_results' %}">Evaluation Results</a></li> #}
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+         {% if messages %}
+            <ul class="messages">
+                {% for message in messages %}
+                    <li class="{{ message.tags }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer>
+        <p>Chunking Thesis Project - {% now "Y" %}</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Annotate Experiment {{ experiment.id }}{% endblock %}
+
+{% block content %}
+<style>
+    .highlight { background-color: yellow; }
+    #textContainer {
+        white-space: pre-wrap; /* Preserva spazi e a capo */
+        border: 1px solid #ccc;
+        padding: 15px;
+        margin-bottom: 15px;
+        font-family: monospace; /* Rende più facile il mapping degli indici */
+        max-height: 70vh;
+        overflow-y: auto;
+        line-height: 1.5; /* Migliora leggibilità */
+        cursor: text; /* Cursore di testo */
+    }
+</style>
+
+<h2>Annotate Experiment {{ experiment.id }}</h2>
+<p><strong>Document:</strong> {{ experiment.source_text.title }}</p>
+<p><strong>Question:</strong> {{ experiment.question.text }}</p>
+{% if experiment.description %}
+    <p><strong>Description:</strong> {{ experiment.description }}</p>
+{% endif %}
+
+<hr>
+
+<form method="POST" id="highlightForm">
+    {% csrf_token %}
+    <h3>Document content</h3>
+    <p>Select relevant context. Use "Delete highlights" to remove everything. Click "Save" in order to save current highlights (overwrite the previous ones).</p>
+
+    <div id="textContainer"><span id="textContent">{{source_text_content}}</span></div>
+
+    <input type="hidden" name="highlights" id="highlightData">
+
+    <button type="button" onclick="clearHighlights()">Delete Highlights</button>
+    <button type="submit">Save current highlights</button>
+</form>
+
+<script>
+    const existingHighlights = JSON.parse('{{ existing_highlights_json|escapejs }}');
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const textContainer = document.getElementById('textContainer');
+    const highlightDataInput = document.getElementById('highlightData');
+    let highlights = []; // Array che tiene traccia degli highlights CORRENTI nella UI {start, end}
+
+    // --- FUNZIONI HELPER ---
+
+    /**
+     * Trova il nodo di testo e l'offset interno corrispondenti a un offset
+     * di caratteri assoluto all'interno di un elemento genitore.
+     */
+    function findNodeAndOffset(parentElement, charOffset) {
+        const treeWalker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT, null, false);
+        let currentOffset = 0;
+        let currentNode;
+        while (currentNode = treeWalker.nextNode()) {
+            const nodeLength = currentNode.textContent.length;
+            if (charOffset >= currentOffset && charOffset <= currentOffset + nodeLength) {
+                return {
+                    node: currentNode,
+                    offset: charOffset - currentOffset
+                };
+            }
+            currentOffset += nodeLength;
+        }
+        // Caso speciale: offset è esattamente alla fine dell'ultimo nodo
+        const lastNode = treeWalker.previousNode(); // Torna all'ultimo nodo visitato
+        if (lastNode && charOffset === currentOffset) {
+             return { node: lastNode, offset: lastNode.textContent.length };
+        }
+        console.warn(`Offset ${charOffset} not exactly found inside the text.`);
+        return null;
+    }
+
+    /**
+     * Calcola l'offset assoluto di un punto (node, offsetInNode) rispetto al parent.
+     */
+    function getAbsoluteOffset(parent, node, offsetInNode) {
+        const treeWalker = document.createTreeWalker(parent, NodeFilter.SHOW_TEXT, null, false);
+        let accumulatedOffset = 0;
+        let currentNode;
+        while (currentNode = treeWalker.nextNode()) {
+            if (currentNode === node) {
+                return accumulatedOffset + Math.min(offsetInNode, currentNode.textContent.length);
+            }
+            accumulatedOffset += currentNode.textContent.length;
+        }
+        console.warn("Node not found in the calculation of getAbsoluteOffset", node);
+        return accumulatedOffset;
+    }
+
+    /**
+     * Tenta di avvolgere un Range con uno span.highlight.
+     * Restituisce true se ha successo, false altrimenti.
+     */
+    function highlightRange(range) {
+        if (range.collapsed) {
+            console.warn("Error trying to highlight a range.");
+            return false;
+        }
+        const span = document.createElement('span');
+        span.className = 'highlight';
+        try {
+            // surroundContents è il punto critico
+            range.surroundContents(span);
+            return true;
+        } catch (e) {
+            console.error("Error during surroundContents:", e);
+            console.log("Range Details:",
+                `Start: [Node: ${range.startContainer.nodeName}, Offset: ${range.startOffset}]`,
+                `End: [Node: ${range.endContainer.nodeName}, Offset: ${range.endOffset}]`,
+                `Collapsed: ${range.collapsed}`,
+                `Ancestor: ${range.commonAncestorContainer.nodeName}`
+            );
+            // Non mostrare alert qui, gestisci l'errore nel chiamante se necessario
+            return false;
+        }
+    }
+
+    /**
+     * Aggiorna il campo hidden con l'array highlights corrente, ordinato.
+     */
+    function updateHiddenField() {
+        highlights.sort((a, b) => a.start - b.start); // Ordina per start offset
+        highlightDataInput.value = JSON.stringify(highlights);
+        console.log("Hidden field updated:", highlights);
+    }
+
+    /**
+     * Rimuove tutti gli span .highlight e riunisce i nodi di testo.
+     * Aggiorna l'array highlights e il campo hidden.
+     */
+    window.clearHighlights = function() { // Rendi globale per onclick=""
+       const spans = textContainer.querySelectorAll('.highlight');
+       spans.forEach(span => {
+           const parent = span.parentNode;
+           while (span.firstChild) {
+               parent.insertBefore(span.firstChild, span);
+           }
+           parent.removeChild(span);
+           parent.normalize(); // Unisce nodi di testo adiacenti
+       });
+       highlights = [];
+       updateHiddenField();
+       console.log("Highlights cleared.");
+    }
+
+    // --- LOGICA DI INIZIALIZZAZIONE ---
+    function initializeHighlights() {
+        console.log("Initializing highlights from:", existingHighlights);
+        if (!textContainer) {
+             console.error("Container #textContainer non trovato!");
+             return;
+        }
+
+        // Ordina per start decrescente per applicare dal fondo ed evitare conflitti offset
+        existingHighlights.sort((a, b) => b.start - a.start);
+
+        highlights = []; // Resetta l'array locale
+        let initialHighlightCount = 0;
+
+        existingHighlights.forEach(hl => {
+            const startPos = findNodeAndOffset(textContainer, hl.start);
+            const endPos = findNodeAndOffset(textContainer, hl.end);
+
+            if (startPos && endPos) {
+                try {
+                    const range = document.createRange();
+                    range.setStart(startPos.node, startPos.offset);
+                    range.setEnd(endPos.node, endPos.offset);
+
+                    if (highlightRange(range)) {
+                        highlights.unshift({ start: hl.start, end: hl.end }); // Aggiungi all'inizio
+                        initialHighlightCount++;
+                    } else {
+                         console.warn(`Highlighting failed for range [${hl.start}-${hl.end}] during init.`);
+                    }
+                } catch (e) {
+                    console.error(`Error applying initial highlight [${hl.start}-${hl.end}]:`, e);
+                }
+            } else {
+                console.warn(`Could not find nodes/offsets for highlight [${hl.start}-${hl.end}]. Skipping.`);
+            }
+        });
+
+        // Normalizza una volta alla fine se necessario (ma può essere costoso)
+        // textContainer.normalize();
+
+        console.log(`Initialized ${initialHighlightCount} highlights.`);
+        // Aggiorna il campo hidden con gli highlights caricati correttamente e riordinati
+        updateHiddenField();
+    }
+
+    // --- EVENT LISTENER PER LA SELEZIONE UTENTE ---
+    textContainer.addEventListener('mouseup', (event) => {
+        // Ignora se il click parte o finisce dentro un highlight esistente
+        // (permette all'utente di selezionare testo non evidenziato anche se inizia/finisce vicino)
+        if (event.target.closest('.highlight')) {
+            // Permette la deselezione del browser cliccando su un highlight
+            // ma non avvia il processo di creazione di un nuovo highlight.
+            return;
+        }
+
+        const selection = window.getSelection();
+        if (!selection.rangeCount || selection.isCollapsed) {
+            return; // Nessuna selezione valida
+        }
+
+        const range = selection.getRangeAt(0);
+
+        // Verifica che la selezione sia contenuta nel nostro container
+        if (!textContainer.contains(range.commonAncestorContainer)) {
+            console.warn("Selection spans outside the target container.");
+            selection.removeAllRanges();
+            return;
+        }
+
+        // Calcola gli offset assoluti robusti
+        const startOffset = getAbsoluteOffset(textContainer, range.startContainer, range.startOffset);
+        const endOffset = getAbsoluteOffset(textContainer, range.endContainer, range.endOffset);
+
+        const finalStart = Math.min(startOffset, endOffset);
+        const finalEnd = Math.max(startOffset, endOffset);
+
+        if (finalStart === finalEnd) { // Selezione collassata dopo il calcolo
+             selection.removeAllRanges();
+             return;
+        }
+
+        // Controlla sovrapposizioni con highlights esistenti nell'array JS
+        const overlaps = highlights.some(hl => (finalStart < hl.end && finalEnd > hl.start));
+
+        if (overlaps) {
+            alert("The selection overlaps an existing one. Delete the old one if necessary.");
+            selection.removeAllRanges(); // Rimuovi selezione non valida
+            return;
+        }
+
+        // Tenta di applicare l'highlight visivo
+        if (highlightRange(range)) {
+            // Aggiungi all'array JS solo se l'highlight è stato applicato
+            highlights.push({start: finalStart, end: finalEnd});
+            updateHiddenField(); // Aggiorna il campo hidden
+        }
+        // Rimuovi sempre la selezione del browser dopo averla processata
+        selection.removeAllRanges();
+
+    });
+
+    // --- Esegui l'inizializzazione ---
+    initializeHighlights();
+
+}); // Fine DOMContentLoaded
+</script>
+
+<hr>
+<p><a href="{% url 'experiments:list_experiments' %}">Go back to Experiment list</a></p>
+
+{% endblock %}

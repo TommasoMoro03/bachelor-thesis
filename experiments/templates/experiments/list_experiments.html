@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}Experiments{% endblock %}
+
+{% block content %}
+    <h2>Defined experiments</h2>
+    {# <p><a href="{% url 'experiments:create_experiment' %}">Create New Experiment</a></p> #}
+    {% if experiments %}
+        {% for exp in experiments %}
+            <div style="border: 1px solid #ccc; padding: 15px; margin-bottom: 15px;">
+                <h4>Experiment ID: {{ exp.id }}</h4>
+                <p><strong>Document:</strong> <a href="{% url 'corpus:source_text_detail' exp.source_text.pk %}">{{ exp.source_text.title }}</a></p>
+                <p><strong>Question:</strong> {{ exp.question.text }}</p>
+                <p><strong>Created on:</strong> {{ exp.created_at|date:"d/m/Y H:i" }}</p>
+                <p><a href="{% url 'experiments:annotate_experiment' exp.pk %}">Highlight relevant sentences</a></p>
+
+                <h5>Available Chunk Set for "{{ exp.source_text.title }}" and Actions:</h5>
+                {% with available_chunksets=exp.source_text.chunkset_set.all %}
+                    {% if available_chunksets %}
+                        <ul>
+                        {% for cs in available_chunksets %}
+                            <li>
+                                Strategy: {{ cs.strategy.name }} (Set ID: {{ cs.id }})
+                                - <a href="{% url 'evaluation:detail' experiment_pk=exp.pk chunk_set_pk=cs.pk %}">
+                                    Start/Visualize evaluation for this experiment
+                                  </a>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                    {% else %}
+                         <p><em>No Chunk Set created for this experiment. <a href="{% url 'experiments:manage_document_chunking' exp.source_text.pk %}">Apply strategy</a>.</em></p>
+                    {% endif %}
+                {% endwith %}
+            </div>
+        {% empty %}
+            <li>No experiment created.</li>
+        {% endfor %}
+
+    {% else %}
+        <p>No experiment created.</p>
+    {% endif %}
+{% endblock %}

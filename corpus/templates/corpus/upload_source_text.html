@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Source Text{% endblock %}
+
+{% block content %}
+    <h2>Upload New Source Text (.txt)</h2>
+    {# Required for file upload #}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }} {# Renders the form as paragraphs #}
+        <button type="submit">Upload</button>
+    </form>
+    <p style="margin-top: 20px;"><a href="{% url 'corpus:list_source_texts' %}">Back to List</a></p>
+{% endblock %}
