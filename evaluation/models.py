@@ -44,6 +44,8 @@ class RetrievalSimulation(models.Model):
     # The final calculated evaluation score
     rdsg_score = models.FloatField(null=True, blank=True, help_text="Calculated RDSG score")
     ran_at = models.DateTimeField(auto_now_add=True)
+    ideal_rdsg_score = models.FloatField(null=True, blank=True, help_text="Ideal RDSG score for normalization")
+    ndcg_score = models.FloatField(null=True, blank=True, help_text="Normalized DCG score (NDCG)")
 
 
 class RetrievedChunk(models.Model):

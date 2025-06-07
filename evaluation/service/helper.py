@@ -151,9 +151,9 @@ def handle_run_simulation_and_rdsg(request, analysis: ExperimentChunkAnalysis, e
             messages.info(request, f"Simulation (ID: {simulation.id}) completed. Retrieved {simulation.k_retrieved} chunks.")
 
             # Compute RDSG
-            retrieval_simulation.calculate_rdsg(simulation)
+            retrieval_simulation.calculate_rdsg_and_ndcg(simulation)
 
-            messages.success(request, f"RDSG score calculated: {simulation.rdsg_score:.4f}")
+            messages.success(request, f"NDCG score calculated: {simulation.ndcg_score:.4f}")
             return False
 
     except ValueError as ve:

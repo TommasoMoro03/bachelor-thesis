@@ -175,46 +175,73 @@ def run_retrieval_simulation(analysis: ExperimentChunkAnalysis):
 
 
 @transaction.atomic
-def calculate_rdsg(simulation: RetrievalSimulation):
+def calculate_rdsg_and_ndcg(simulation: RetrievalSimulation): # Renamed function
     """
-    Calcola il punteggio RDSG per una data RetrievalSimulation.
-    Aggiorna e salva simulation.rdsg_score.
+    Calculates the RDSG, Ideal RDSG, and NDCG scores for a given RetrievalSimulation.
+    Updates and saves simulation.rdsg_score, simulation.ideal_rdsg_score, and simulation.ndcg_score.
     """
-    print(f"Calcolo RDSG per Simulation ID: {simulation.id}")
+    print(f"Calculating RDSG and NDCG for Simulation ID: {simulation.id}")
 
     retrieved_chunks = simulation.retrieved_chunks.select_related('chunk').order_by('retrieved_rank')
-    if not retrieved_chunks.exists():
-        print("Nessun chunk recuperato in questa simulazione. RDSG = 0.")
-        simulation.rdsg_score = 0.0
-        simulation.save(update_fields=['rdsg_score'])
-        return
-
-    # Prepara una mappa dei w_prime per i chunk rilevanti dell'analisi associata
     analysis = simulation.analysis
-    ranked_relevant_chunks = analysis.ranked_relevant_chunks.all()
-    w_prime_map = {rrc.chunk_id: rrc.effective_relevance_w_prime for rrc in ranked_relevant_chunks if
-                   rrc.effective_relevance_w_prime is not None}
 
+    # Fetch all RankedRelevantChunk objects for the analysis, ordered by ideal_rank
+    ranked_relevant_chunks_qs = analysis.ranked_relevant_chunks.select_related('chunk').filter(
+        ideal_rank__isnull=False, effective_relevance_w_prime__isnull=False
+    ).order_by('ideal_rank')
+
+    # Create a map for effective relevance (w') for quick lookup by chunk_id
+    w_prime_map = {rrc.chunk_id: rrc.effective_relevance_w_prime for rrc in ranked_relevant_chunks_qs}
+
+    # --- Calculate RDSG ---
     rdsg_sum = 0.0
-    for retrieved_chunk_item in retrieved_chunks:
-        chunk_id = retrieved_chunk_item.chunk_id
-        retrieved_rank_i = retrieved_chunk_item.retrieved_rank
-        similarity_score_s_i = retrieved_chunk_item.similarity_score_s
+    if not retrieved_chunks.exists():
+        print("No chunks retrieved in this simulation. RDSG = 0.")
+        rdsg_sum = 0.0
+    else:
+        for retrieved_chunk_item in retrieved_chunks:
+            chunk_id = retrieved_chunk_item.chunk_id
+            retrieved_rank_i = retrieved_chunk_item.retrieved_rank
+            similarity_score_s_i = retrieved_chunk_item.similarity_score_s
 
-        # Ottieni w'(c_i) - se il chunk non è rilevante o w' non è calcolato, w_prime è 0
-        w_prime_c_i = w_prime_map.get(chunk_id, 0.0)
+            w_prime_c_i = w_prime_map.get(chunk_id, 0.0) # 0 if not relevant or w' not calculated
 
-        # Calcola il termine per la somma RDSG
-        # RDSG = sum [ (w'(c_i) * s(c_i)) / log2(i+1) ]
-        denominator = math.log2(retrieved_rank_i + 1)
-        if denominator == 0:  # Non dovrebbe accadere per i > 0
-            term_value = 0
-        else:
-            term_value = (w_prime_c_i * similarity_score_s_i) / denominator
+            denominator = math.log2(retrieved_rank_i + 1)
+            term_value = (w_prime_c_i * similarity_score_s_i) / denominator if denominator > 0 else 0.0
+            rdsg_sum += term_value
+            # print(f"  RDSG Term: Rank {retrieved_rank_i}, ChunkID {chunk_id}, w'={w_prime_c_i:.3f}, s={similarity_score_s_i:.3f}, term={term_value:.3f}")
 
-        rdsg_sum += term_value
-        # print(f"Rank {retrieved_rank_i}, ChunkID {chunk_id}, w'={w_prime_c_i:.3f}, s={similarity_score_s_i:.3f}, term={term_value:.3f}") # Debug
+    # --- Calculate Ideal RDSG ---
+    ideal_rdsg_sum = 0.0
+    if not ranked_relevant_chunks_qs.exists():
+        print("No ranked relevant chunks for ideal RDSG calculation. Ideal RDSG = 0.")
+        ideal_rdsg_sum = 0.0
+    else:
+        # We use enumerate for the ideal rank (i) from 1, based on the ordering
+        for idx, rrc_item in enumerate(ranked_relevant_chunks_qs):
+            ideal_rank_i = idx + 1 # Ideal rank is 1-based, matches (i) in the formula
+            ideal_w_prime_c_i = rrc_item.effective_relevance_w_prime
 
+            ideal_denominator = math.log2(ideal_rank_i + 1)
+            ideal_term_value = (ideal_w_prime_c_i * 1.0) / ideal_denominator if ideal_denominator > 0 else 0.0 # Ideal similarity score is 1.0
+            ideal_rdsg_sum += ideal_term_value
+            # print(f"  Ideal RDSG Term: Ideal Rank {ideal_rank_i}, w'={ideal_w_prime_c_i:.3f}, term={ideal_term_value:.3f}")
+
+    # --- Calculate NDCG ---
+    ndcg_score = 0.0
+    if ideal_rdsg_sum > 0:
+        ndcg_score = rdsg_sum / ideal_rdsg_sum
+    else:
+        print("Ideal RDSG is zero, NDCG cannot be calculated (defaulting to 0).")
+        # If ideal_rdsg_sum is 0, it means there are no relevant chunks or their w' values are all 0.
+        # In this case, NDCG is undefined or 0.
+
+    # Save results to the simulation object
     simulation.rdsg_score = rdsg_sum
-    simulation.save(update_fields=['rdsg_score'])
-    print(f"Punteggio RDSG calcolato: {simulation.rdsg_score:.4f}")
+    simulation.ideal_rdsg_score = ideal_rdsg_sum
+    simulation.ndcg_score = ndcg_score
+    simulation.save(update_fields=['rdsg_score', 'ideal_rdsg_score', 'ndcg_score'])
+
+    print(f"RDSG calculated: {simulation.rdsg_score:.4f}")
+    print(f"Ideal RDSG calculated: {simulation.ideal_rdsg_score:.4f}")
+    print(f"NDCG calculated: {simulation.ndcg_score:.4f}")
