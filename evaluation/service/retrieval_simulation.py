@@ -220,12 +220,11 @@ def calculate_rdsg_and_ndcg(simulation: RetrievalSimulation): # Renamed function
         # We use enumerate for the ideal rank (i) from 1, based on the ordering
         for idx, rrc_item in enumerate(ranked_relevant_chunks_qs):
             ideal_rank_i = idx + 1 # Ideal rank is 1-based, matches (i) in the formula
-            ideal_w_prime_c_i = rrc_item.effective_relevance_w_prime
+            ideal_w_c_i = rrc_item.intrinsic_importance_w
 
             ideal_denominator = math.log2(ideal_rank_i + 1)
-            ideal_term_value = (ideal_w_prime_c_i * 1.0) / ideal_denominator if ideal_denominator > 0 else 0.0 # Ideal similarity score is 1.0
+            ideal_term_value = (ideal_w_c_i * 1.0) / ideal_denominator if ideal_denominator > 0 else 0.0
             ideal_rdsg_sum += ideal_term_value
-            # print(f"  Ideal RDSG Term: Ideal Rank {ideal_rank_i}, w'={ideal_w_prime_c_i:.3f}, term={ideal_term_value:.3f}")
 
     # --- Calculate NDCG ---
     ndcg_score = 0.0

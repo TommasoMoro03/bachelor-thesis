@@ -12,11 +12,11 @@
         <table border="1" cellpadding="8" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <thead>
                 <tr style="background-color: #f2f2f2;">
-                    <th>Experiment ID</th>
+                    <th>ID</th>
                     <th>Document Title</th>
                     <th>Question</th>
                     {% for strategy in all_strategies %}
-                        <th>{{ strategy.name }}<br>(NDCG)</th>
+                        <th>{{ strategy.name }}</th>
                     {% endfor %}
                 </tr>
             </thead>

@@ -5,51 +5,50 @@ import re
 
 
 def _pure_paragraph_split(content: str, paragraph_separator: str) -> List[Dict[str, Any]]:
-    """Splitta il contenuto in chunk basati su paragrafi, indipendentemente dalla lunghezza."""
-    escaped_sep = paragraph_separator.replace('\n', '\\n')
-    print(f"Custom: Esecuzione Pure Paragraph Split con separatore: '{escaped_sep}'")
-    paragraphs = re.split(r'\n\s*\n+', content)
+    """Splits content into chunks based on paragraphs (using regex for separator),
+       maintaining accurate original character offsets."""
+    escaped_sep_for_print = paragraph_separator.replace('\n', '\\n').replace('\s', '\\s')
+    print(f"Custom: Executing Pure Paragraph Split with separator regex: '{escaped_sep_for_print}'")
 
     chunks_data_list = []
-    current_char_offset = 0
-    for para in paragraphs:
-        cleaned_para = para.strip()
-        # Calcola la lunghezza del paragrafo originale + separatore per avanzare l'offset
-        # Questo è importante anche per paragrafi vuoti o solo spazi
-        full_para_len = len(para) + len(paragraph_separator)
+    current_content_idx = 0  # Tracks the current position in the original 'content' string
 
-        if not cleaned_para:
-            current_char_offset += full_para_len
-            continue
+    delimiter_matches = list(re.finditer(paragraph_separator, content))
 
-        # Trova la posizione esatta del paragrafo pulito nel testo originale
-        # Questo è più robusto che incrementare un offset fisso se ci sono variazioni di spazio
-        start_idx = content.find(cleaned_para, current_char_offset)
+    for match in delimiter_matches:
+        segment = content[current_content_idx:match.start()]
+        cleaned_segment = segment.strip()
 
-        if start_idx == -1:
-            # Fallback se non si trova (es. encoding diverso o pulizia aggressiva)
-            # Potrebbe significare che il 'cleaned_para' non è esattamente una sottostringa di 'content'
-            print(
-                f"WARN: Paragrafo non trovato nel testo originale a partire da offset {current_char_offset}: '{cleaned_para[:50]}...'")
-            # In un caso reale, potresti voler gestire questo errore in modo più robusto
-            # Per ora, stimiamo l'offset in base alla lunghezza del testo originale processato
-            if chunks_data_list:
-                start_idx = chunks_data_list[-1]['end_char'] + len(paragraph_separator)
-            else:
-                start_idx = current_char_offset  # Ultimo offset noto
-            end_idx = start_idx + len(cleaned_para)
-        else:
-            end_idx = start_idx + len(cleaned_para)
+        if cleaned_segment:
+            start_in_segment_relative = segment.find(cleaned_segment)
+            actual_start_char = current_content_idx + start_in_segment_relative
+            actual_end_char = actual_start_char + len(cleaned_segment)
+
+            chunks_data_list.append({
+                'text': cleaned_segment,
+                'start_char': actual_start_char,
+                'end_char': actual_end_char,
+                'metadata': {'type': 'pure_paragraph'}
+            })
+
+        current_content_idx = match.end()
+
+    remaining_segment = content[current_content_idx:]
+    cleaned_remaining_segment = remaining_segment.strip()
+
+    if cleaned_remaining_segment:
+        start_in_remaining_relative = remaining_segment.find(cleaned_remaining_segment)
+        actual_start_char = current_content_idx + start_in_remaining_relative
+        actual_end_char = actual_start_char + len(cleaned_remaining_segment)
 
         chunks_data_list.append({
-            'text': cleaned_para,
-            'start_char': start_idx,
-            'end_char': end_idx,
+            'text': cleaned_remaining_segment,
+            'start_char': actual_start_char,
+            'end_char': actual_end_char,
             'metadata': {'type': 'pure_paragraph'}
         })
-        # Avanza l'offset per la prossima ricerca, includendo il separatore dopo il paragrafo trovato
-        current_char_offset = end_idx + len(paragraph_separator)
 
+    print(f"ChunkImplementations: Restituiti {len(chunks_data_list)} chunk data.")
     return chunks_data_list
 
 
