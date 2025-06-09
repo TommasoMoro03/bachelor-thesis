@@ -11,5 +11,9 @@ urlpatterns = [
         views.evaluation_detail_view, # Nome della view che creeremo
         name='detail'
     ),
-    # Aggiungeremo altri URL qui in seguito, se necessario
+    path(
+        'results/',
+        views.view_evaluation_results, # This is the new view function
+        name='view_results'
+    ),
 ]

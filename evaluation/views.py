@@ -1,5 +1,6 @@
 import json
 
+from django.db.models import Prefetch
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.contrib import messages
@@ -9,7 +10,7 @@ from django.db import transaction
 from corpus.models import SourceText, Question
 from evaluation.service import relevant_chunks, helper
 from experiments.models import Experiment, ChunkingStrategy, ChunkSet, Chunk
-from .models import ExperimentChunkAnalysis, RankedRelevantChunk
+from .models import ExperimentChunkAnalysis, RankedRelevantChunk, RetrievalSimulation
 from .service.helper import handle_run_simulation_and_rdsg
 
 
@@ -132,3 +133,59 @@ def evaluation_detail_view(request, experiment_pk, chunk_set_pk):
         'all_relevant_highlights_json': json.dumps(all_relevant_highlights_data),
     }
     return render(request, 'evaluation/evaluation_detail.html', context)
+
+def view_evaluation_results(request):
+    """
+    Displays a summary table of NDCG scores for all experiments and chunking strategies.
+    Allows for easy comparison across different strategies.
+    """
+    print("Loading Evaluation Results Summary...")
+
+    # Fetch all Chunking Strategies for column headers
+    all_strategies = ChunkingStrategy.objects.all().order_by('name')
+
+    # Fetch all Experiments (Document-Question pairs)
+    # We want to optimize queries by prefetching related data
+    experiments = Experiment.objects.select_related('source_text', 'question').order_by('source_text__title', 'question__text')
+
+    results_data = [] # List of dicts, each dict represents a row (an experiment)
+
+    # Dictionary to quickly map strategy_id to its name
+    strategy_name_map = {strategy.id: strategy.name for strategy in all_strategies}
+
+    for experiment in experiments:
+        row_data = {
+            'experiment_id': experiment.id,
+            'document_title': experiment.source_text.title,
+            'question_text': experiment.question.text,
+            'strategy_results': {} # Will store {strategy_name: ndcg_score}
+        }
+
+        # Fetch all analyses for this experiment, prefetching related chunk_set and simulations
+        # Order by chunk_set__strategy__name to ensure consistent column order
+        analyses_for_experiment = ExperimentChunkAnalysis.objects.filter(experiment=experiment).select_related(
+            'chunk_set__strategy'
+        ).prefetch_related(
+            Prefetch(
+                'simulations',
+                queryset=RetrievalSimulation.objects.order_by('-ran_at'), # Get the latest simulation if multiple
+                to_attr='latest_simulations' # Store in this attribute
+            )
+        ).order_by('chunk_set__strategy__name') # Sort analyses by strategy name for consistent display
+
+        for analysis in analyses_for_experiment:
+            strategy_name = analysis.chunk_set.strategy.name
+            ndcg_score = None
+            if analysis.latest_simulations:
+                latest_sim = analysis.latest_simulations[0] # Get the most recent simulation
+                ndcg_score = latest_sim.ndcg_score
+
+            row_data['strategy_results'][strategy_name] = ndcg_score
+
+        results_data.append(row_data)
+
+    context = {
+        'all_strategies': all_strategies, # For table headers
+        'results_data': results_data,     # For table rows
+    }
+    return render(request, 'evaluation/results_summary.html', context)

@@ -149,6 +149,20 @@
                             <span style="color: orange;">(Not calculated yet)</span>
                         {% endif %}
                      </li>
+                     <li><strong>Ideal RDSG:</strong>
+                        {% if simulation.ideal_rdsg_score is not None %}
+                            <strong>{{ simulation.ideal_rdsg_score|floatformat:4 }}</strong>
+                        {% else %}
+                            <span style="color: orange;">(Not calculated yet)</span>
+                        {% endif %}
+                     </li>
+                     <li><strong>NDCG score:</strong>
+                        {% if simulation.ndcg_score is not None %}
+                            <strong>{{ simulation.ndcg_score|floatformat:4 }}</strong>
+                        {% else %}
+                            <span style="color: orange;">(Not calculated yet)</span>
+                        {% endif %}
+                     </li>
                      <li>Retrieval executed on: {{ simulation.ran_at|date:"d/m/Y H:i:s" }}</li>
                  </ul>
                  <h4>Retrieved chunks (\(List_{retrieved})\):</h4>
