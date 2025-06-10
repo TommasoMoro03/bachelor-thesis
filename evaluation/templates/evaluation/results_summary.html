@@ -4,48 +4,233 @@
 {% block title %}Evaluation Results Summary{% endblock %}
 
 {% block content %}
+    <style>
+        /* CSS for Highlighting */
+        .best-score { background-color: #d4edda; } /* Light green */
+        .second-best-score { background-color: #f8fceb; } /* Very light green/yellowish */
+        .worst-score { background-color: #f8d7da; } /* Light red */
+        .second-worst-score { background-color: #fff3f5; } /* Very light red */
+
+        /* CSS for Average/Variance Columns */
+        .avg-var-column {
+            background-color: #e0f7fa; /* Light blue */
+        }
+
+        /* CSS for Scrollable Table with Fixed Header */
+        .table-container {
+            max-width: 100%; /* Ensures it doesn't overflow parent */
+            overflow-x: auto; /* Enables horizontal scrolling */
+            margin-bottom: 20px;
+            border: 1px solid #ddd; /* Add a border to the container */
+            border-radius: 5px; /* Slightly rounded corners */
+        }
+
+        .results-table {
+            width: 100%; /* Takes full width of its container (which is scrollable) */
+            border-collapse: collapse; /* Collapses borders */
+            min-width: 1200px; /* Increased minimum width to ensure horizontal scroll when many columns */
+        }
+
+        /* Common styles for all sticky headers/cells */
+        .results-table th,
+        .results-table td {
+            padding: 12px 10px;
+            text-align: center;
+            border: 1px solid #ddd;
+            vertical-align: middle;
+        }
+
+        /* --- STICKY HEADER (TOP ROW) --- */
+        .results-table thead th {
+            position: sticky; /* Makes header sticky */
+            top: 0; /* Sticks to the top of the scrollable container */
+            background-color: #e9ecef; /* Slightly darker header background */
+            z-index: 10; /* Ensures header stays above scrolling content */
+        }
+
+        /* --- STICKY COLUMNS (LEFT-SIDE) --- */
+        .results-table th:nth-child(1), .results-table td:nth-child(1), /* Experiment ID */
+        .results-table th:nth-child(2), .results-table td:nth-child(2), /* Document Title */
+        .results-table th:nth-child(3), .results-table td:nth-child(3)  /* Question */
+        {
+            position: sticky;
+            left: 0;
+            background-color: #f8f9fa; /* Lighter background for sticky columns */
+            z-index: 9; /* Lower than header, higher than scrolling content */
+            border-right: 2px solid #ccc; /* Separator for sticky columns */
+        }
+
+        /* Ensure sticky headers on sticky columns are on top */
+        .results-table thead th:nth-child(1),
+        .results-table thead th:nth-child(2),
+        .results-table thead th:nth-child(3) {
+            z-index: 11; /* Make sticky headers on sticky columns even higher */
+        }
+
+        /* Text alignment for specific content columns */
+        .results-table td:nth-child(2), /* Document Title */
+        .results-table td:nth-child(3)  /* Question */
+        {
+            text-align: left; /* Align text content to the left */
+        }
+
+    </style>
+
     <h2>Evaluation Results Summary</h2>
 
-    <p>This table summarizes the NDCG scores for each experiment across different chunking strategies.</p>
+    <p>This table summarizes the NDCG scores for each experiment across different chunking strategies.
+       The best-performing strategies are highlighted in green, and the worst in red.
+       Average and Standard Deviation columns provide statistical insights for each experiment.</p>
 
     {% if results_data %}
+        <div class="table-container">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Experiment ID</th>
+                        <th>Document Title</th>
+                        <th>Question</th>
+                        {% for strategy in all_strategies %}
+                            <th>{{ strategy.name }}<br>(NDCG)</th>
+                        {% endfor %}
+                        <th class="avg-var-column">Average<br>(NDCG)</th>
+                        <th class="avg-var-column">Std. Dev.<br>(NDCG)</th>
+                        <th class="avg-var-column">Median<br>(NDCG)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in results_data %}
+                        <tr>
+                            <td>{{ row.experiment_id }}</td>
+                            <td>{{ row.document_title }}</td>
+                            <td>{{ row.question_text }}</td>
+                            {% for strategy in all_strategies %}
+                                {% with ndcg_score=row.strategy_results|get_item:strategy.name %}
+                                    <td class="
+                                        {% if ndcg_score is not None %}
+                                            {% if ndcg_score == row.best_ndcg_score %}best-score
+                                            {% elif ndcg_score == row.second_best_ndcg_score %}second-best-score
+                                            {% elif ndcg_score == row.worst_ndcg_score %}worst-score
+                                            {% elif ndcg_score == row.second_worst_ndcg_score %}second-worst-score
+                                            {% endif %}
+                                        {% endif %}
+                                    ">
+                                        {% if ndcg_score is not None %}
+                                            <strong>{{ ndcg_score|floatformat:4 }}</strong>
+                                        {% else %}
+                                            <span style="color: gray;">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                {% endwith %}
+                            {% endfor %}
+                            <td class="avg-var-column">
+                                {% if row.average_ndcg is not None %}
+                                    <strong>{{ row.average_ndcg|floatformat:4 }}</strong>
+                                {% else %}
+                                    <span style="color: gray;">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="avg-var-column">
+                                {% if row.std_dev_ndcg is not None %}
+                                    {{ row.std_dev_ndcg|floatformat:4 }}
+                                {% else %}
+                                    <span style="color: gray;">N/A</span>
+                                {% endif %}
+                            </td>
+                             <td class="avg-var-column">
+                                {% if row.median_ndcg is not None %}
+                                    {{ row.median_ndcg|floatformat:4 }}
+                                {% else %}
+                                    <span style="color: gray;">N/A</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="{{ all_strategies|length |add:7 }}" style="text-align: center; color: orange;">No evaluation results found. Please run analyses first.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No evaluation results available yet. Please conduct some experiments and run retrieval simulations.</p>
+    {% endif %}
+
+    <hr style="margin-top: 40px; margin-bottom: 20px;">
+
+    <h3>Overall Strategy Performance Summary</h3>
+    <p>This table provides aggregate statistics for each chunking strategy across all experiments.</p>
+
+    {% if summary_table_data %}
         <table border="1" cellpadding="8" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <thead>
                 <tr style="background-color: #f2f2f2;">
-                    <th>ID</th>
-                    <th>Document Title</th>
-                    <th>Question</th>
-                    {% for strategy in all_strategies %}
-                        <th>{{ strategy.name }}</th>
-                    {% endfor %}
+                    <th>Strategy Name</th>
+                    <th>Experiments Run</th>
+                    <th>Mean NDCG</th>
+                    <th>Median NDCG</th>
+                    <th>Trimmed Mean NDCG</th>
+                    <th>Std. Dev. NDCG</th>
+                    <th>Total Ranking Points</th>
+                    <th>Wins (Rank 1)</th>
                 </tr>
             </thead>
             <tbody>
-                {% for row in results_data %}
+                {% for strategy_agg in summary_table_data %}
                     <tr>
-                        <td style="text-align: center;">{{ row.experiment_id }}</td>
-                        <td>{{ row.document_title }}</td>
-                        <td>{{ row.question_text }}</td>
-                        {% for strategy in all_strategies %}
-                            <td style="text-align: center;">
-                                {% with ndcg_score=row.strategy_results|get_item:strategy.name %}
-                                    {% if ndcg_score is not None %}
-                                        <strong>{{ ndcg_score|floatformat:4 }}</strong>
-                                    {% else %}
-                                        <span style="color: gray;">N/A</span>
-                                    {% endif %}
-                                {% endwith %}
-                            </td>
-                        {% endfor %}
+                        <td><strong>{{ strategy_agg.strategy_name }}</strong></td>
+                        <td style="text-align: center;">{{ strategy_agg.num_experiments_run }}</td>
+                        <td style="text-align: center;">
+                            {% if strategy_agg.mean_ndcg is not None %}
+                                <strong>{{ strategy_agg.mean_ndcg|floatformat:4 }}</strong>
+                            {% else %}
+                                <span style="color: gray;">N/A</span>
+                            {% endif %}
+                        </td>
+                         <td style="text-align: center;">
+                            {% if strategy_agg.median_ndcg is not None %}
+                                {{ strategy_agg.median_ndcg|floatformat:4 }}
+                            {% else %}
+                                <span style="color: gray;">N/A</span>
+                            {% endif %}
+                        </td>
+                         <td style="text-align: center;">
+                            {% if strategy_agg.trimmed_mean_ndcg is not None %}
+                                {{ strategy_agg.trimmed_mean_ndcg|floatformat:4 }}
+                            {% else %}
+                                <span style="color: gray;">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if strategy_agg.std_dev_ndcg is not None %}
+                                {{ strategy_agg.std_dev_ndcg|floatformat:4 }}
+                            {% else %}
+                                <span style="color: gray;">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if strategy_agg.total_ranking_points is not None %}
+                                <strong>{{ strategy_agg.total_ranking_points }}</strong>
+                            {% else %}
+                                <span style="color: gray;">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if strategy_agg.wins_count is not None %}
+                                {{ strategy_agg.wins_count }}
+                            {% else %}
+                                <span style="color: gray;">N/A</span>
+                            {% endif %}
+                        </td>
                     </tr>
                 {% empty %}
-                    <tr><td colspan="{{ all_strategies|length |add:3 }}" style="text-align: center; color: orange;">No evaluation results found. Please run analyses first.</td></tr>
+                    <tr><td colspan="8" style="text-align: center; color: orange;">No aggregate summary data available.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     {% else %}
-        <p>No evaluation results available yet. Please conduct some experiments and run retrieval simulations.</p>
+        <p>No aggregate summary data available. Please run some experiments.</p>
     {% endif %}
+
 
     <p style="margin-top: 20px;">
         <a href="{% url 'dashboard' %}">Back to Dashboard</a>
