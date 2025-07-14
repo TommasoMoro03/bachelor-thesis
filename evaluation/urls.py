@@ -16,4 +16,9 @@ urlpatterns = [
         views.view_evaluation_results, # This is the new view function
         name='view_results'
     ),
+    path(
+        'statistical_analysis/',
+        views.run_statistical_analysis_view,
+        name='statistical_analysis'
+    ),
 ]

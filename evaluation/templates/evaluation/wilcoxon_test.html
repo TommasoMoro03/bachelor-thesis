@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+
+{% block title %}Statistical Analysis Results{% endblock %}
+
+{% block content %}
+    <h2>Statistical Analysis: Wilcoxon Signed-Rank Test Results</h2>
+
+    <p>This table presents the results of Wilcoxon Signed-Rank tests comparing the Normalized Discounted Cumulative Gain (NDCG) scores of selected chunking strategies across all experiments. The test assesses whether there is a statistically significant difference in performance between pairs of strategies.</p>
+
+    <p>A significance level ($\alpha$) of 0.05 is used. If the P-value is less than 0.05, the difference is considered statistically significant.</p>
+
+    {% if wilcoxon_results %}
+        <table border="1" cellpadding="8" cellspacing="0" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead>
+                <tr style="background-color: #f2f2f2;">
+                    <th>Strategy 1</th>
+                    <th>Strategy 2</th>
+                    <th>Experiments Compared (N)</th>
+                    <th>Wilcoxon Statistic</th>
+                    <th>P-value</th>
+                    <th>Significant (\(\alpha=0.05)\)?</th>
+                    <th>Mean NDCG (S1)</th>
+                    <th>Mean NDCG (S2)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in wilcoxon_results %}
+                    <tr>
+                        <td>{{ result.strategy_1 }}</td>
+                        <td>{{ result.strategy_2 }}</td>
+                        <td style="text-align: center;">{{ result.num_experiments }}</td>
+                        <td style="text-align: center;">
+                            {% if result.statistic is not None and not result.statistic|floatformat:4 == "nan" %}
+                                {{ result.statistic|floatformat:4 }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if result.p_value is not None and not result.p_value|floatformat:9 == "nan" %}
+                                <strong style="color: {% if result.significant %}green{% else %}red{% endif %};">
+                                    {{ result.p_value|floatformat:9 }}
+                                </strong>
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if result.significant %}
+                                <strong style="color: green;">Yes</strong>
+                            {% else %}
+                                <span style="color: red;">No</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if result.mean_s1 is not None %}
+                                {{ result.mean_s1|floatformat:4 }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if result.mean_s2 is not None %}
+                                {{ result.mean_s2|floatformat:4 }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="8" style="text-align: center; color: orange;">No statistical test results available. Ensure experiments are run and data is present.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No statistical test results to display. Please ensure experiments are run and data is available.</p>
+    {% endif %}
+
+    <p style="margin-top: 20px;">
+        <a href="{% url 'dashboard' %}">Back to Dashboard</a>
+    </p>
+{% endblock %}

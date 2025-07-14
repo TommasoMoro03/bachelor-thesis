@@ -15,6 +15,7 @@ from evaluation.service import relevant_chunks, helper
 from experiments.models import Experiment, ChunkingStrategy, ChunkSet, Chunk
 from .models import ExperimentChunkAnalysis, RankedRelevantChunk, RetrievalSimulation
 from .service.helper import handle_run_simulation_and_rdsg
+from .service import statistical_analysis
 
 
 def evaluation_detail_view(request, experiment_pk, chunk_set_pk):
@@ -217,7 +218,7 @@ def view_evaluation_results(request):
 
             # Trimmed Mean: Exclude top 1 and bottom 1 (if sufficient data)
             if len(scores_array) >= 3:  # Need at least 3 points to trim 1 from each end
-                trimmed_scores_array = np.sort(scores_array)[1:-1]  # Remove first and last
+                trimmed_scores_array = np.sort(scores_array)[3:-3]  # Remove first and last
                 row_data['trimmed_mean_ndcg'] = np.mean(trimmed_scores_array)
             else:
                 row_data['trimmed_mean_ndcg'] = None  # Not enough data to trim
@@ -288,7 +289,7 @@ def view_evaluation_results(request):
 
             if len(scores_array) >= 3:
                 # For trimmed mean, sort, remove the first and last (or more generally, a percentage)
-                trimmed_scores_array = np.sort(scores_array)[1:-1]  # Exclude top 1 and bottom 1
+                trimmed_scores_array = np.sort(scores_array)[3:-3]  # Exclude top 1 and bottom 1
                 if len(trimmed_scores_array) > 0:
                     agg_data['trimmed_mean_ndcg'] = np.mean(trimmed_scores_array)
                 else:
@@ -307,3 +308,33 @@ def view_evaluation_results(request):
         'summary_table_data': summary_table_data,  # Data for the new aggregate summary table
     }
     return render(request, 'evaluation/results_summary.html', context)
+
+
+def run_statistical_analysis_view(request):
+    """
+    Renders a page displaying the results of Wilcoxon Signed-Rank tests
+    comparing different chunking strategies.
+    """
+    print("Accessing Wilcoxon Tests Results page and initiating calculations...")
+
+    # Define the comparison pairs. These names must exactly match the strategy names in your database.
+    # The order of strategies here should ideally reflect their Mean NDCG from your summary table.
+    comparison_pairs = [
+        ("Pure paragraphs", "Sentence Window (200-500 Chars, 50-Overlap)"),
+        ("Pure paragraphs", "Fixed Size 256/20"),
+        ("Pure paragraphs", "Higher buffer"),
+        ("Fixed Size 128/10", "Fixed Size 1024/100"),
+        ("Sentence Window (200-500 Chars, 50-Overlap)", "Moderate Cohesion"),
+        ("Pure paragraphs", "Fixed Size 1024/100")  # Added for stronger contrast
+    ]
+
+    # Fetch NDCG scores from the database, structured by strategy
+    ndcg_scores_data = statistical_analysis.get_ndcg_scores_per_strategy()  #
+
+    # Run the Wilcoxon tests
+    wilcoxon_results = statistical_analysis.run_wilcoxon_tests(ndcg_scores_data, comparison_pairs)  #
+
+    context = {
+        'wilcoxon_results': wilcoxon_results  #
+    }
+    return render(request, 'evaluation/wilcoxon_test.html', context)
